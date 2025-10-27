@@ -1,22 +1,117 @@
 {% extends "base.html" %}
 {% block title %}Devis{% endblock %}
+
 {% block content %}
 <h2>Devis</h2>
 
 <!-- Sélecteur d'entreprise -->
-<form method="get" action="/">
-  <div class="mb-3">
-    <label for="company_id" class="form-label">Société :</label>
-    <select name="company_id" id="company_id" class="form-select" onchange="this.form.submit()">
-      <option value="">Toutes</option>
-      {% for c in companies %}
-      <option value="{{ c.id }}" {% if selected_company_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+<form method="get" action="/" class="mb-4">
+  <label for="company_id" class="form-label">Société :</label>
+  <select name="company_id" id="company_id" class="form-select" onchange="this.form.submit()">
+    <option value="">Toutes</option>
+    {% for c in companies %}
+    <option value="{{ c.id }}" {% if selected_company_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<!-- Statistiques -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">Signé</h6>
+        <p class="card-text fs-3">{{ stats.signed }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">En attente</h6>
+        <p class="card-text fs-3">{{ stats.pending }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">Expiré</h6>
+        <p class="card-text fs-3">{{ stats.expired }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">Total devis créés</h6>
+        <p class="card-text fs-3">{{ stats.recent_total }}</p>
+        <small>Les 30 derniers jours</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Filtre par statut et recherche -->
+<form method="get" action="/" class="row g-3 mb-3">
+  <input type="hidden" name="company_id" value="{{ selected_company_id or '' }}">
+  <div class="col-md-4">
+    <input type="text" name="search" value="{{ search_query }}" class="form-control" placeholder="Recherche...">
+  </div>
+  <div class="col-md-3">
+    <select name="status" class="form-select">
+      <option value="">Tous les statuts</option>
+      {% for st in statuses %}
+      <option value="{{ st }}" {% if selected_status == st %}selected{% endif %}>{{ st }}</option>
       {% endfor %}
     </select>
   </div>
+  <div class="col-md-2">
+    <button type="submit" class="btn btn-primary w-100">Filtrer</button>
+  </div>
 </form>
 
-<!-- Statistiques (identiques à avant) -->
-<!-- … puis le tableau des devis comme précédemment, en utilisant quotes, statuses, etc. -->
-
+<!-- Tableau des devis -->
+<table class="table table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>Date</th>
+      <th>Client</th>
+      <th>N°</th>
+      <th>HT</th>
+      <th>TTC</th>
+      <th>Statut</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for q in quotes %}
+    <tr>
+      <td>{{ q.quote_date }}</td>
+      <td>{{ q.client_name }}</td>
+      <td>{{ q.id }}</td>
+      <td>{{ '%.2f'|format(q.amount_ht) }} €</td>
+      <td>{{ '%.2f'|format(q.amount_ttc) }} €</td>
+      <td>
+        <span class="badge
+          {% if q.status == 'Payée' %}bg-success
+          {% elif q.status == 'Refusé' %}bg-danger
+          {% elif q.status == 'Envoyé' %}bg-primary
+          {% elif q.status == 'Expiré' %}bg-warning text-dark
+          {% else %}bg-secondary{% endif %}">
+          {{ q.status }}
+        </span>
+      </td>
+      <td>
+        <a href="/quote/{{ q.id }}" class="btn btn-sm btn-outline-secondary">Voir</a>
+        {% if q.status in ['Brouillon', 'Envoyé'] %}
+        <a href="/quote/{{ q.id }}/sign" class="btn btn-sm btn-outline-primary ms-1">Signer</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="text-center">Aucun devis.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

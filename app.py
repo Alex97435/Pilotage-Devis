@@ -1,6 +1,6 @@
 """
 Application de suivi et de centralisation des devis (version Supabase)
-avec gestion des entreprises.
+avec gestion des entreprises (compagnies).
 """
 
 import os
@@ -148,7 +148,7 @@ app = FastAPI(title="Gestion des devis (Supabase)")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-# Accueil filtré par entreprise (optionnel)
+# Page d'accueil avec filtre par entreprise
 @app.get("/")
 def index(
     request: Request,
@@ -156,23 +156,19 @@ def index(
     status: Optional[str] = None,
     search: Optional[str] = None,
 ):
-    """
-    Affiche les devis pour une entreprise donnée (company_id).
-    Si aucun company_id n'est fourni, tous les devis sont affichés.
-    """
-    # Récupérer les entreprises pour le menu
+    # Récupérer les sociétés
     company_rows = supabase_table_select("companies")
     companies = [Company(**c) for c in company_rows]
 
     # Préparer les filtres pour les devis
-    filters: Dict = {}
+    filters: Dict[str, int] = {}
     if company_id:
         filters["company_id"] = company_id
 
     quote_rows = supabase_table_select("quotes", filters)
     quotes = [Quote(**r) for r in quote_rows]
 
-    # Recherche simple
+    # Recherche textuelle
     if search:
         q_lower = search.lower()
         quotes = [
@@ -181,7 +177,7 @@ def index(
             or (q.description and q_lower in q.description.lower())
         ]
 
-    # Déterminer le statut pour chaque devis
+    # Calcul du statut
     def compute_status(q: Quote) -> str:
         if q.invoice_amount is not None:
             if q.amount is None or q.amount == 0 or q.invoice_amount >= q.amount:
@@ -189,13 +185,12 @@ def index(
             return "Refusé"
         if q.signed_pdf_filename:
             return "Envoyé"
-        # Test expiration (>30 jours)
         dt_quote = datetime.strptime(q.quote_date, "%Y-%m-%d").date()
         if (datetime.now().date() - dt_quote).days > 30:
             return "Expiré"
         return "Brouillon"
 
-    # Filtrer par statut
+    # Préparer les devis pour l'affichage et filtrer par statut
     display_quotes = []
     for q in quotes:
         st = compute_status(q)
@@ -207,7 +202,7 @@ def index(
         q_dict["amount_ttc"] = round((q.amount or 0.0) * 1.2, 2)
         display_quotes.append(q_dict)
 
-    # Compter les statuts
+    # Statistiques
     stats = {
         "signed": len([q for q in quotes if q.signed_pdf_filename]),
         "pending": len([q for q in quotes if not q.signed_pdf_filename and (datetime.now().date() - datetime.strptime(q.quote_date, "%Y-%m-%d").date()).days <= 30]),
@@ -293,4 +288,75 @@ async def create_quote(
     supabase_table_update("quotes", quote_id, {"pdf_filename": pdf_filename, "updated_at": now})
     return RedirectResponse(url=f"/?company_id={company_id}", status_code=303)
 
-# Routes /quote/{id}, /sign, /invoice, etc. demeurent identiques à celles fournies précédemment.
+# Détail du devis
+@app.get("/quote/{quote_id}")
+def quote_detail(request: Request, quote_id: int):
+    row = supabase_table_get("quotes", quote_id)
+    if not row:
+        return RedirectResponse(url="/", status_code=303)
+    quote = Quote(**row)
+    return templates.TemplateResponse("quote_detail.html", {"request": request, "quote": quote})
+
+# Téléchargement du devis
+@app.get("/quote/{quote_id}/download")
+def download_pdf(quote_id: int, signed: bool = False):
+    row = supabase_table_get("quotes", quote_id)
+    if not row:
+        return RedirectResponse(url="/", status_code=303)
+    quote = Quote(**row)
+    filename = quote.signed_pdf_filename if (signed and quote.signed_pdf_filename) else quote.pdf_filename
+    if not filename:
+        return RedirectResponse(url=f"/quote/{quote_id}", status_code=303)
+    file_path = DATA_DIR / filename
+    return FileResponse(path=file_path, media_type="application/pdf", filename=filename)
+
+# Formulaire de signature
+@app.get("/quote/{quote_id}/sign")
+def sign_form(request: Request, quote_id: int):
+    row = supabase_table_get("quotes", quote_id)
+    if not row:
+        return RedirectResponse(url="/", status_code=303)
+    quote = Quote(**row)
+    return templates.TemplateResponse("sign.html", {"request": request, "quote": quote})
+
+@app.post("/quote/{quote_id}/sign")
+async def sign_quote(request: Request, quote_id: int, signature: UploadFile = File(...)):
+    sig_path = save_signature(signature)
+    if not sig_path:
+        return RedirectResponse(url=f"/quote/{quote_id}", status_code=303)
+    row = supabase_table_get("quotes", quote_id)
+    if not row:
+        return RedirectResponse(url="/", status_code=303)
+    quote = Quote(**row)
+    signed_filename = generate_pdf(quote, signature_path=sig_path)
+    now = datetime.now().isoformat()
+    supabase_table_update("quotes", quote_id, {"signed_pdf_filename": signed_filename, "updated_at": now})
+    return RedirectResponse(url=f"/quote/{quote_id}", status_code=303)
+
+# Enregistrement du montant facturé
+@app.post("/quote/{quote_id}/invoice")
+async def submit_invoice(
+    request: Request,
+    quote_id: int,
+    invoice_amount: float = Form(...),
+    invoice_comment: str = Form("")
+):
+    row = supabase_table_get("quotes", quote_id)
+    if not row:
+        return RedirectResponse(url="/", status_code=303)
+    now = datetime.now().isoformat()
+    supabase_table_update(
+        "quotes",
+        quote_id,
+        {
+            "invoice_amount": invoice_amount,
+            "invoice_comment": invoice_comment or None,
+            "updated_at": now,
+        },
+    )
+    return RedirectResponse(url=f"/quote/{quote_id}", status_code=303)
+
+# Démarrage local
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Nouvelle entreprise{% endblock %}
+{% block content %}
+<h2>Créer une entreprise</h2>
+<form method="post" action="/companies/new">
+  <div class="mb-3">
+    <label for="name" class="form-label">Nom de l'entreprise</label>
+    <input type="text" name="name" id="name" class="form-control" required>
+  </div>
+  <button type="submit" class="btn btn-primary">Créer</button>
+</form>
+{% endblock %}

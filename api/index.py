@@ -3,15 +3,12 @@
 import sys
 from pathlib import Path
 
-# Ajoute le dossier parent (la racine du projet) dans le chemin Python,
-# afin que l'importation de "app" fonctionne même lorsque Vercel exécute
-# cette fonction depuis le dossier api/
+# Ajoute le dossier parent (racine du projet) au chemin Python
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 # Importe l'application FastAPI depuis app.py
-from app import app
+from app import app as fastapi_app
 
-# Vercel utilise la variable "handler" (ou "app") comme point d'entrée
-# pour exécuter la fonction serverless.
-handler = app
+# Exporte-la sous le nom 'app' (attendu par Vercel)
+app = fastapi_app

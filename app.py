@@ -1,6 +1,6 @@
 """
 Application de suivi et de centralisation des devis (version Supabase)
-avec gestion des entreprises (compagnies).
+avec gestion des entreprises (companies).
 """
 
 import os
@@ -9,13 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict
 
-from fastapi import FastAPI, Request, Form, UploadFile, File
+from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
 from supabase import create_client, Client  # type: ignore
+import pandas as pd
 
 # Configuration Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -148,7 +149,7 @@ app = FastAPI(title="Gestion des devis (Supabase)")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-# Page d'accueil avec filtre par entreprise
+# Page d'accueil avec filtre par entreprise et par statut
 @app.get("/")
 def index(
     request: Request,
@@ -241,12 +242,13 @@ async def create_company(name: str = Form(...)):
     supabase_table_insert("companies", {"name": name, "created_at": datetime.now().isoformat()})
     return RedirectResponse(url="/companies", status_code=303)
 
-# Création d'un devis (liée à une entreprise)
+# Formulaire de création de devis
 @app.get("/new")
 def new_quote_form(request: Request):
     companies = [Company(**c) for c in supabase_table_select("companies")]
     return templates.TemplateResponse("new.html", {"request": request, "companies": companies})
 
+# Création de devis (avec option PDF)
 @app.post("/new")
 async def create_quote(
     request: Request,
@@ -288,6 +290,79 @@ async def create_quote(
     supabase_table_update("quotes", quote_id, {"pdf_filename": pdf_filename, "updated_at": now})
     return RedirectResponse(url=f"/?company_id={company_id}", status_code=303)
 
+# Routes d'importation (Excel/CSV ou PDF)
+@app.get("/import_excel")
+def import_excel_form(request: Request):
+    return templates.TemplateResponse("import_excel.html", {"request": request})
+
+@app.post("/import_excel")
+async def import_excel(request: Request, excel_file: UploadFile = File(...)):
+    suffix = Path(excel_file.filename).suffix.lower()
+    now = datetime.now().isoformat()
+
+    # Cas d'un PDF : enregistrer le fichier et créer un devis minimal
+    if suffix == ".pdf":
+        content = await excel_file.read()
+        pdf_name = f"imported_{datetime.now():%Y%m%d%H%M%S}.pdf"
+        pdf_path = DATA_DIR / pdf_name
+        with open(pdf_path, "wb") as f:
+            f.write(content)
+        created = supabase_table_insert("quotes", {
+            "client_name": "Import PDF",
+            "quote_date": datetime.now().strftime("%Y-%m-%d"),
+            "category": "Import",
+            "description": excel_file.filename,
+            "amount": 0.0,
+            "company_id": None,
+            "pdf_filename": pdf_name,
+            "created_at": now,
+            "updated_at": now,
+        })
+        if not created:
+            raise HTTPException(status_code=500, detail="Erreur lors de l'enregistrement du PDF")
+        return RedirectResponse(url="/", status_code=303)
+
+    # Cas Excel/CSV : lire le fichier et créer des devis
+    content = await excel_file.read()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    if suffix in [".xlsx", ".xls"]:
+        df = pd.read_excel(tmp_path)
+    elif suffix in [".csv", ".txt"]:
+        df = pd.read_csv(tmp_path)
+    else:
+        return RedirectResponse(url="/import_excel", status_code=303)
+
+    for _, row_data in df.iterrows():
+        client = str(row_data.get("client_name", "")).strip()
+        date = str(row_data.get("quote_date", "")).strip()
+        cat = str(row_data.get("category", "")).strip()
+        desc = str(row_data.get("description", ""))
+        amt = float(row_data.get("amount", 0.0))
+        comp = row_data.get("company_id")
+        if not client or not date or not cat:
+            continue
+        created = supabase_table_insert("quotes", {
+            "client_name": client,
+            "quote_date": date,
+            "category": cat,
+            "description": desc or None,
+            "amount": amt,
+            "company_id": int(comp) if comp else None,
+            "created_at": now,
+            "updated_at": now,
+        })
+        if not created:
+            continue
+        quote_id = created["id"]
+        quote = Quote(**created)
+        pdf_filename = generate_pdf(quote)
+        supabase_table_update("quotes", quote_id, {"pdf_filename": pdf_filename, "updated_at": now})
+    os.remove(tmp_path)
+    return RedirectResponse(url="/", status_code=303)
+
 # Détail du devis
 @app.get("/quote/{quote_id}")
 def quote_detail(request: Request, quote_id: int):
@@ -297,7 +372,7 @@ def quote_detail(request: Request, quote_id: int):
     quote = Quote(**row)
     return templates.TemplateResponse("quote_detail.html", {"request": request, "quote": quote})
 
-# Téléchargement du devis
+# Télécharger le devis (signé ou non)
 @app.get("/quote/{quote_id}/download")
 def download_pdf(quote_id: int, signed: bool = False):
     row = supabase_table_get("quotes", quote_id)
@@ -319,6 +394,7 @@ def sign_form(request: Request, quote_id: int):
     quote = Quote(**row)
     return templates.TemplateResponse("sign.html", {"request": request, "quote": quote})
 
+# Enregistrer la signature
 @app.post("/quote/{quote_id}/sign")
 async def sign_quote(request: Request, quote_id: int, signature: UploadFile = File(...)):
     sig_path = save_signature(signature)
@@ -333,7 +409,7 @@ async def sign_quote(request: Request, quote_id: int, signature: UploadFile = Fi
     supabase_table_update("quotes", quote_id, {"signed_pdf_filename": signed_filename, "updated_at": now})
     return RedirectResponse(url=f"/quote/{quote_id}", status_code=303)
 
-# Enregistrement du montant facturé
+# Enregistrer le montant facturé
 @app.post("/quote/{quote_id}/invoice")
 async def submit_invoice(
     request: Request,
@@ -356,7 +432,7 @@ async def submit_invoice(
     )
     return RedirectResponse(url=f"/quote/{quote_id}", status_code=303)
 
-# Démarrage local
+# Démarrage local (facultatif)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

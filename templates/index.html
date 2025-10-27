@@ -1,52 +1,125 @@
 {% extends "base.html" %}
+{% block title %}Devis{% endblock %}
+{% block page_title %}Devis{% endblock %}
 
-{% block title %}Liste des devis{% endblock %}
+{% block header_actions %}
+  <a href="/import_excel" class="btn btn-outline-secondary me-2">Importer des devis</a>
+  <a href="/new" class="btn btn-primary">Créer un devis</a>
+{% endblock %}
 
 {% block content %}
-<h2>Liste des devis</h2>
+<!-- Cartes de synthèse -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">Signé</h6>
+        <p class="card-text fs-3">{{ stats.signed }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">En attente</h6>
+        <p class="card-text fs-3">{{ stats.pending }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">Expiré</h6>
+        <p class="card-text fs-3">{{ stats.expired }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body">
+        <h6 class="card-title">Total devis créés</h6>
+        <p class="card-text fs-3">{{ stats.recent_total }}</p>
+        <small>Les 30 derniers jours</small>
+      </div>
+    </div>
+  </div>
+</div>
 
-<form method="get" action="/" style="margin-bottom: 15px;">
-    <label for="month">Mois :</label>
-    <select name="month" id="month">
-        <option value="">Tous</option>
-        {% for m in months %}
-            <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
+<!-- Filtres -->
+<form method="get" action="/" class="row g-2 mb-3">
+  <div class="col-md-3">
+    <input type="text" name="search" value="{{ search_query }}" class="form-control" placeholder="Recherche...">
+  </div>
+  <div class="col-md-2">
+    <select name="status" class="form-select">
+      <option value="">Statuts</option>
+      {% for st in statuses %}
+      <option value="{{ st }}" {% if selected_status == st %}selected{% endif %}>{{ st }}</option>
+      {% endfor %}
     </select>
-    <label for="category">Catégorie :</label>
-    <select name="category" id="category">
-        <option value="">Toutes</option>
-        {% for c in categories %}
-            <option value="{{ c }}" {% if selected_category == c %}selected{% endif %}>{{ c }}</option>
-        {% endfor %}
+  </div>
+  <div class="col-md-2">
+    <select name="month" class="form-select">
+      <option value="">Période</option>
+      {% for m in months %}
+      <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
     </select>
-    <button class="btn" type="submit">Filtrer</button>
+  </div>
+  <div class="col-md-2">
+    <select name="category" class="form-select">
+      <option value="">Catégorie</option>
+      {% for c in categories %}
+      <option value="{{ c }}" {% if selected_category == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button type="submit" class="btn btn-primary w-100">Filtrer</button>
+  </div>
 </form>
 
-<table>
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Client</th>
-            <th>Date</th>
-            <th>Catégorie</th>
-            <th>Montant</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for q in quotes %}
-        <tr>
-            <td>{{ q.id }}</td>
-            <td>{{ q.client_name }}</td>
-            <td>{{ q.quote_date }}</td>
-            <td>{{ q.category }}</td>
-            <td>{{ '%0.2f'|format(q.amount) }} €</td>
-            <td><a class="btn" href="/quote/{{ q.id }}">Voir</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6">Aucun devis trouvé.</td></tr>
-        {% endfor %}
-    </tbody>
+<!-- Tableau de devis -->
+<table class="table table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>Création</th>
+      <th>Client</th>
+      <th>N° du devis</th>
+      <th>HT</th>
+      <th>TTC</th>
+      <th>Statut</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for q in quotes %}
+    <tr>
+      <td>{{ q.quote_date }}</td>
+      <td>{{ q.client_name }}</td>
+      <td>{{ q.id }}</td>
+      <td>{{ '%.2f'|format(q.amount_ht) }} €</td>
+      <td>{{ '%.2f'|format(q.amount_ttc) }} €</td>
+      <td>
+        <span class="badge badge-status
+          {% if q.status == 'Payée' %}bg-success
+          {% elif q.status == 'Refusé' %}bg-danger
+          {% elif q.status == 'Envoyé' %}bg-primary
+          {% elif q.status == 'Expiré' %}bg-warning text-dark
+          {% else %}bg-secondary{% endif %}">
+          {{ q.status }}
+        </span>
+      </td>
+      <td>
+        <a href="/quote/{{ q.id }}" class="btn btn-sm btn-outline-secondary">Voir</a>
+        {% if q.status in ['Brouillon', 'Envoyé'] %}
+        <a href="/quote/{{ q.id }}/sign" class="btn btn-sm btn-outline-primary ms-1">Signer</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="text-center">Aucun devis trouvé.</td></tr>
+    {% endfor %}
+  </tbody>
 </table>
 {% endblock %}

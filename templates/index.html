@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Liste des devis{% endblock %}
+
+{% block content %}
+<h2>Liste des devis</h2>
+
+<form method="get" action="/" style="margin-bottom: 15px;">
+    <label for="month">Mois :</label>
+    <select name="month" id="month">
+        <option value="">Tous</option>
+        {% for m in months %}
+            <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+    </select>
+    <label for="category">Catégorie :</label>
+    <select name="category" id="category">
+        <option value="">Toutes</option>
+        {% for c in categories %}
+            <option value="{{ c }}" {% if selected_category == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+    </select>
+    <button class="btn" type="submit">Filtrer</button>
+</form>
+
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Client</th>
+            <th>Date</th>
+            <th>Catégorie</th>
+            <th>Montant</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for q in quotes %}
+        <tr>
+            <td>{{ q.id }}</td>
+            <td>{{ q.client_name }}</td>
+            <td>{{ q.quote_date }}</td>
+            <td>{{ q.category }}</td>
+            <td>{{ '%0.2f'|format(q.amount) }} €</td>
+            <td><a class="btn" href="/quote/{{ q.id }}">Voir</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">Aucun devis trouvé.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

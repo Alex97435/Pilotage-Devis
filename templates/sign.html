@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Signer le devis n°{{ quote.id }}{% endblock %}
+
+{% block content %}
+<h2>Signer le devis n°{{ quote.id }}</h2>
+
+<p>Pour apposer votre signature, importez un fichier image (PNG ou JPG). L'image sera collée dans le coin inférieur droit du PDF.</p>
+
+<form method="post" action="/quote/{{ quote.id }}/sign" enctype="multipart/form-data">
+    <div>
+        <input type="file" name="signature" accept="image/png, image/jpeg" required/>
+    </div>
+    <div style="margin-top: 10px;">
+        <button class="btn" type="submit">Signer et enregistrer</button>
+    </div>
+</form>
+
+<p><a href="/quote/{{ quote.id }}">← Retour au devis</a></p>
+{% endblock %}

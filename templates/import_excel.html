@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Import Excel{% endblock %}
+
+{% block content %}
+<h2>Importer des devis depuis un fichier</h2>
+
+<p>Choisissez un fichier Excel (.xlsx, .xls) ou CSV contenant les colonnes&nbsp;: <strong>client_name</strong>, <strong>quote_date</strong>, <strong>category</strong>, <strong>description</strong>, <strong>amount</strong>.</p>
+
+<form method="post" action="/import_excel" enctype="multipart/form-data">
+    <div>
+        <input type="file" name="excel_file" accept=".xlsx,.xls,.csv,.txt" required />
+    </div>
+    <div style="margin-top: 10px;">
+        <button class="btn" type="submit">Importer</button>
+    </div>
+</form>
+
+<p><a href="/">← Retour à la liste</a></p>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Nouveau devis{% endblock %}
+
+{% block content %}
+<h2>Créer un nouveau devis</h2>
+
+<form method="post" action="/new">
+    <div>
+        <label for="client_name">Nom du client :</label><br/>
+        <input type="text" id="client_name" name="client_name" required/>
+    </div>
+    <div>
+        <label for="quote_date">Date du devis :</label><br/>
+        <input type="date" id="quote_date" name="quote_date" required/>
+    </div>
+    <div>
+        <label for="category">Catégorie (corps de métier / fournisseur) :</label><br/>
+        <input type="text" id="category" name="category" placeholder="ex : plomberie, électricité, fournisseur X" required/>
+    </div>
+    <div>
+        <label for="amount">Montant (€) :</label><br/>
+        <input type="number" step="0.01" id="amount" name="amount" required/>
+    </div>
+    <div>
+        <label for="description">Description :</label><br/>
+        <textarea id="description" name="description" rows="4" cols="50" placeholder="Détail du devis..."></textarea>
+    </div>
+    <div>
+        <label for="pdf_upload">Importer un devis existant (PDF) :</label><br/>
+        <input type="file" id="pdf_upload" name="pdf_upload" accept="application/pdf" />
+        <small>Si vous fournissez un fichier PDF, il sera utilisé comme devis original et aucun PDF ne sera généré.</small>
+    </div>
+    <div style="margin-top: 10px;">
+        <button class="btn" type="submit">Enregistrer le devis</button>
+    </div>
+</form>
+{% endblock %}

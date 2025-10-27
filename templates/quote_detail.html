@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Détail du devis n°{{ quote.id }}{% endblock %}
+
+{% block content %}
+<h2>Devis n°{{ quote.id }}</h2>
+
+<p><strong>Client :</strong> {{ quote.client_name }}</p>
+<p><strong>Date :</strong> {{ quote.quote_date }}</p>
+<p><strong>Catégorie :</strong> {{ quote.category }}</p>
+<p><strong>Montant :</strong> {{ '%0.2f'|format(quote.amount) }} €</p>
+<p><strong>Description :</strong><br/>{{ quote.description | default('(aucune)', true)|replace('\n', '<br/>')|safe }}</p>
+
+<h3>Actions</h3>
+{% if quote.pdf_filename %}
+    <p>
+        <a class="btn" href="/quote/{{ quote.id }}/download">Télécharger le PDF</a>
+    </p>
+{% endif %}
+{% if quote.signed_pdf_filename %}
+    <p>
+        <a class="btn" href="/quote/{{ quote.id }}/download?signed=true">Télécharger la version signée</a>
+    </p>
+{% else %}
+    <p><a class="btn" href="/quote/{{ quote.id }}/sign">Signer ce devis</a></p>
+{% endif %}
+
+<h3>Validation de facture</h3>
+<p>Vous pouvez saisir le montant de la facture finale afin de vérifier qu'il correspond au devis validé. Si un écart existe, laissez un commentaire.</p>
+<form method="post" action="/quote/{{ quote.id }}/invoice">
+    <div>
+        <label for="invoice_amount">Montant de la facture (€) :</label><br/>
+        <input type="number" step="0.01" id="invoice_amount" name="invoice_amount" value="{% if quote.invoice_amount is not none %}{{ '%0.2f'|format(quote.invoice_amount) }}{% endif %}" required />
+    </div>
+    <div>
+        <label for="invoice_comment">Commentaire (en cas d'écart) :</label><br/>
+        <textarea id="invoice_comment" name="invoice_comment" rows="3" cols="50">{% if quote.invoice_comment %}{{ quote.invoice_comment }}{% endif %}</textarea>
+    </div>
+    <div style="margin-top: 10px;">
+        <button class="btn" type="submit">Enregistrer la facture</button>
+    </div>
+</form>
+
+{% if quote.invoice_amount is not none %}
+    {% set difference = quote.invoice_amount - quote.amount %}
+    <p><strong>Résultat :</strong>
+        {% if difference|round(2) == 0.0 %}
+            La facture correspond exactement au devis.
+        {% elif difference > 0 %}
+            La facture est supérieure au devis de {{ '%0.2f'|format(difference) }} €.
+        {% else %}
+            La facture est inférieure au devis de {{ '%0.2f'|format(-difference) }} €.
+        {% endif %}
+    </p>
+{% endif %}
+
+<p><a href="/">← Retour à la liste</a></p>
+{% endblock %}

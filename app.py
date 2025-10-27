@@ -1,11 +1,11 @@
 """
 Application de suivi et de centralisation des devis (version Supabase)
--------------------------------------------------------------------
+---------------------------------------------------------------------
 
 Cette version de l'application remplace la base locale SQLite par
 Supabase (PostgreSQL + stockage) pour persister les données des devis.
 Les fichiers PDF et signatures continuent d'être stockés sur le disque,
-mais sur Vercel le système de fichiers est en lecture seule ; nous
+mais sur Vercel le système de fichiers est en lecture seule ; nous
 utilisons donc un dossier temporaire (/tmp) pour les fichiers générés.
 
 Prérequis (à installer via pip et dans requirements.txt) :
@@ -204,26 +204,119 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 @app.get("/")
-def index(request: Request, month: Optional[str] = None, category: Optional[str] = None):
+def index(
+    request: Request,
+    month: Optional[str] = None,
+    category: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    """
+    Page d'accueil affichant la liste des devis avec filtres et statistiques.
+
+    Les devis peuvent être filtrés par mois (AAAA‑MM), catégorie, statut
+    et recherche (nom du client ou description). Des indicateurs (signé,
+    en attente, expiré, total des 30 derniers jours) sont calculés.
+    """
+    # Préparer les filtres pour Supabase
     filters: Dict[str, str] = {}
     if month:
         filters["quote_date"] = month
     if category:
         filters["category"] = category
+
+    # Récupérer les devis de Supabase
     rows = supabase_table_select(filters)
-    quotes = [Quote(**row) for row in rows]
+    quotes_raw = [Quote(**row) for row in rows]
+
+    # Recherche textuelle en mémoire
+    if search:
+        q_lower = search.lower()
+        quotes_raw = [
+            q for q in quotes_raw
+            if q_lower in q.client_name.lower()
+            or (q.description and q_lower in q.description.lower())
+        ]
+
+    # Fonction de calcul du statut
+    def compute_status(quote: Quote) -> str:
+        # Si une facture existe
+        if quote.invoice_amount is not None:
+            if quote.amount is None or quote.amount == 0:
+                return "Payée"
+            if quote.invoice_amount >= quote.amount:
+                return "Payée"
+            return "Refusé"
+        # Devis signé mais pas de facture
+        if quote.signed_pdf_filename:
+            return "Envoyé"
+        # Pas de signature : test d’expiration
+        try:
+            dt_quote = datetime.strptime(quote.quote_date, "%Y-%m-%d").date()
+        except Exception:
+            return "Brouillon"
+        days_since = (datetime.now().date() - dt_quote).days
+        if days_since > 30:
+            return "Expiré"
+        return "Brouillon"
+
+    # Préparer les devis à afficher
+    quotes_display = []
+    for q in quotes_raw:
+        stat = compute_status(q)
+        # Filtre sur le statut si fourni
+        if status and stat != status:
+            continue
+        q_dict = q.dict()
+        q_dict["status"] = stat
+        montant_ht = q.amount or 0.0
+        q_dict["amount_ht"] = montant_ht
+        q_dict["amount_ttc"] = round(montant_ht * 1.2, 2)  # TVA 20 %
+        quotes_display.append(q_dict)
+
+    # Listes pour les menus déroulants
     all_rows = supabase_table_select()
     categories = sorted({r["category"] for r in all_rows if r.get("category")})
-    month_list = sorted({r["quote_date"][:7] for r in all_rows if r.get("quote_date")}, reverse=True)
+    month_list = sorted(
+        {r["quote_date"][:7] for r in all_rows if r.get("quote_date")}, reverse=True
+    )
+    status_list = ["Payée", "Refusé", "Envoyé", "Expiré", "Brouillon"]
+
+    # Indicateurs (métriques)
+    stats = {
+        "signed": len([q for q in quotes_raw if q.signed_pdf_filename]),
+        "pending": len([
+            q for q in quotes_raw
+            if not q.signed_pdf_filename
+            and (datetime.now().date()
+                 - datetime.strptime(q.quote_date, "%Y-%m-%d").date()).days <= 30
+        ]),
+        "expired": len([
+            q for q in quotes_raw
+            if not q.signed_pdf_filename
+            and (datetime.now().date()
+                 - datetime.strptime(q.quote_date, "%Y-%m-%d").date()).days > 30
+        ]),
+        "recent_total": len([
+            q for q in quotes_raw
+            if (datetime.now().date()
+                - datetime.strptime(q.quote_date, "%Y-%m-%d").date()).days <= 30
+        ]),
+    }
+
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "quotes": quotes,
+            "quotes": quotes_display,
             "selected_month": month,
             "selected_category": category,
+            "selected_status": status,
+            "search_query": search or "",
             "categories": categories,
             "months": month_list,
+            "statuses": status_list,
+            "stats": stats,
         },
     )
 

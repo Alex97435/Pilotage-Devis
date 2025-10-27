@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Entreprises{% endblock %}
+{% block content %}
+<h2>Entreprises</h2>
+<ul>
+  {% for company in companies %}
+  <li>
+    <a href="/?company_id={{ company.id }}">{{ company.name }}</a>
+  </li>
+  {% else %}
+  <li>Aucune entreprise.</li>
+  {% endfor %}
+</ul>
+<a href="/companies/new" class="btn btn-primary mt-3">Créer une entreprise</a>
+{% endblock %}

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pillow
+jinja2
+python-multipart
+pandas
+openpyxl
+# Dépendances Supabase / PostgreSQL :
+supabase==1.*
+asyncpg
+SQLAlchemy==2.*

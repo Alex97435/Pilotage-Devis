@@ -115,3 +115,14 @@
   </tbody>
 </table>
 {% endblock %}
+<form method="get" action="/" class="row g-2">
+  <div class="col-md-3">
+    <select name="company_id" class="form-select" onchange="this.form.submit()">
+      <option value="">Toutes les entreprises</option>
+      {% for c in companies %}
+      <option value="{{ c.id }}" {% if selected_company_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <!-- autres filtres mois/catégorie/statut -->
+</form>
